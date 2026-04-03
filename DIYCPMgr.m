@@ -2,7 +2,7 @@
 //  DIYCPMgr.m
 //  ChangePrices
 //
-//  Created by viktorhuang on 2026/3/16.
+//  Created by Nightonke on 2026/3/16.
 //
 
 #import "DIYCPMgr_Private.h"
@@ -98,7 +98,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
             [apps addObject:app];
         }
         
-        // 通过 iTunes Lookup API 批量获取 app 图标
+        // Fetch app icons in batch via iTunes Lookup API
         [self fetchIconURLsForApps:apps completion:^(NSArray<DIYCPApp *> *appsWithIcons) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion)
@@ -192,7 +192,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
             [groups addObject:group];
         }
         
-        // 2. 并发获取每个分组下的订阅列表
+        // 2. Fetch subscription lists for each group concurrently
         [self fetchSubscriptionsForGroups:groups completion:^(NSArray<DIYCPSubscriptionGroup *> *groupsWithSubs) {
             dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(groupsWithSubs, nil); });
         }];
@@ -261,8 +261,8 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
                          territories:(NSArray<NSString *> *)territories
                           completion:(void (^)(NSArray<DIYCPPricePoint *> * _Nullable, NSError * _Nullable))completion
 {
-    // 使用 v2 端点获取 IAP 的价格点，include territory
-    // filter[territory] 支持逗号分隔的多个地区代码，最多10个
+    // Use v2 endpoint to fetch IAP price points, include territory
+    // filter[territory] supports comma-separated multiple territory codes, maximum 10
     NSString *urlString = [NSString stringWithFormat:
         @"https://api.appstoreconnect.apple.com/v2/inAppPurchases/%@/pricePoints?include=territory&limit=8000",
         iapId];
@@ -284,8 +284,8 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
 - (void)fetchIAPEqualizationsForPricePointId:(NSString *)pricePointId
                                   completion:(void (^)(NSArray<DIYCPPricePoint *> * _Nullable, NSError * _Nullable))completion
 {
-    // IAP Equalizations API: 给定一个价格点 ID，返回所有其他地区的等价价格
-    // 返回格式和 pricePoints 完全一致（data 数组 + included territories），可复用解析逻辑
+    // IAP Equalizations API: Given a price point ID, returns equivalent prices in all other regions
+    // Return format is identical to pricePoints (data array + included territories), can reuse parsing logic
     NSString *urlString = [NSString stringWithFormat:
         @"https://api.appstoreconnect.apple.com/v1/inAppPurchasePricePoints/%@/equalizations?include=territory&limit=200",
         pricePointId];
@@ -296,7 +296,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
 - (void)fetchIAPCurrentPricesForIAPId:(NSString *)iapId
                            completion:(void (^)(NSArray<DIYCPPricePoint *> * _Nullable, NSError * _Nullable))completion
 {
-    // Step 1: 先获取 iapPriceSchedule 拿到 schedule 的 id
+    // Step 1: First get iapPriceSchedule to obtain schedule ID
     NSString *urlString = [NSString stringWithFormat:
         @"https://api.appstoreconnect.apple.com/v2/inAppPurchases/%@/iapPriceSchedule",
         iapId];
@@ -310,11 +310,10 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
         
         if (error)
         {
-            // 检测 404 NOT_FOUND —— 说明该商品尚未在 App Store Connect 配置价格
+            // Detect 404 NOT_FOUND — indicates product hasn't configured price on App Store Connect
             if (error.code == 404)
             {
-                NSError *noPriceError = [NSError errorWithDomain:@"DIYCPMgr"
-                                                            code:DIYCPMgrErrorCodeNoPriceSchedule
+                NSError *noPriceError = [NSError errorWithDomain:@                                                            code:DIYCPMgrErrorCodeNoPriceSchedule
                                                         userInfo:@{NSLocalizedDescriptionKey: @"该商品尚未在 App Store Connect 上配置价格。请先在 App Store Connect 中为该商品设置价格后再试。"}];
                 dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(nil, noPriceError); });
                 return;
@@ -334,8 +333,8 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
             return;
         }
         
-        // Step 2: 先获取 manualPrices（手动设置的价格，如美国基准价和中国独立价），再获取 automaticPrices（Apple 自动计算的其他地区价格）
-        // manualPrices 优先，automaticPrices 补充剩余地区
+        // Step 2: First get manualPrices (manually set prices, e.g., US base price and China independent price), then get automaticPrices (Apple auto-calculated prices for other regions)
+        // manualPrices takes priority, automaticPrices supplements remaining regions
         NSString *manualPricesURL = [NSString stringWithFormat:
             @"https://api.appstoreconnect.apple.com/v1/inAppPurchasePriceSchedules/%@/manualPrices?include=inAppPurchasePricePoint,territory&limit=200",
             scheduleId];
@@ -347,8 +346,8 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
                 return;
             }
             
-            // Step 3: 用 automaticPrices 子端点获取 Apple 自动计算的其他地区价格
-            // accumulated 传入 manualResults，seenTerritories 会自动去重（手动价格优先）
+            // Step 3: Use automaticPrices sub-endpoint to get Apple auto-calculated prices for other regions
+            // accumulated passes manualResults, seenTerritories will automatically deduplicate (manual prices take priority)
             NSString *autoPricesURL = [NSString stringWithFormat:
                 @"https://api.appstoreconnect.apple.com/v1/inAppPurchasePriceSchedules/%@/automaticPrices?include=inAppPurchasePricePoint,territory&limit=200",
                 scheduleId];
@@ -364,13 +363,13 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
                                    territory:(NSString *)filterTerritory
                                   completion:(void (^)(NSArray<DIYCPPricePoint *> * _Nullable, NSError * _Nullable))completion
 {
-    // Subscription 是 v1 资源，pricePoints 端点在 v1 下（不同于 IAP 的 v2）
+    // Subscription is v1 resource, pricePoints endpoint is under v1 (different from IAP's v2)
     NSString *urlString = [NSString stringWithFormat:
         @"https://api.appstoreconnect.apple.com/v1/subscriptions/%@/pricePoints?include=territory&limit=8000",
         subscriptionId];
     if (filterTerritory.length > 0)
     {
-        // filter[territory] 支持逗号分隔的多个地区代码
+        // filter[territory] supports comma-separated multiple territory codes
         NSArray *territories = [filterTerritory componentsSeparatedByString:@","];
         if (territories.count > 5)
         {
@@ -387,8 +386,8 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
 - (void)fetchSubscriptionEqualizationsForPricePointId:(NSString *)pricePointId
                                            completion:(void (^)(NSArray<DIYCPPricePoint *> * _Nullable, NSError * _Nullable))completion
 {
-    // Equalizations API: 给定一个价格点 ID，返回所有其他地区的等价价格
-    // 返回格式和 pricePoints 完全一致（data 数组 + included territories），可复用解析逻辑
+    // Equalizations API: Given a price point ID, returns equivalent prices in all other regions
+    // Return format is identical to pricePoints (data array + included territories), can reuse parsing logic
     NSString *urlString = [NSString stringWithFormat:
         @"https://api.appstoreconnect.apple.com/v1/subscriptionPricePoints/%@/equalizations?include=territory&limit=200",
         pricePointId];
@@ -761,7 +760,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
                              startDate:(NSDate * _Nullable)startDate
                             completion:(void (^)(BOOL success, NSError * _Nullable error))completion
 {
-    // 格式化生效日期
+    // Format effective date
     NSString *startDateStr = nil;
     if (startDate)
     {
@@ -771,12 +770,12 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
         startDateStr = [fmt stringFromDate:startDate];
     }
     
-    // 构建 manualPrices relationship data 和 included 数组
+    // Build manualPrices relationship data and included array
     NSMutableArray *manualPricesRelData = [NSMutableArray array];
     NSMutableArray *includedArray = [NSMutableArray array];
     
-    // 首先添加基准国家的价格点（基准国家必须在 manualPrices 中）
-    // Apple API 要求 included 中的 placeholder id 必须使用 ${local-id} 格式
+    // First add base country price point (base country must be in manualPrices)
+    // Apple API requires placeholder id in included to use ${local-id} format
     NSInteger priceIndex = 0;
     NSString *basePlaceholderId = [NSString stringWithFormat:@"${price%ld}", (long)priceIndex++];
     [manualPricesRelData addObject:@{
@@ -787,7 +786,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
     NSMutableDictionary *baseIncluded = [NSMutableDictionary dictionary];
     baseIncluded[@"id"] = basePlaceholderId;
     baseIncluded[@"type"] = @"inAppPurchasePrices";
-    // Apple 要求基准国家的 startDate 必须为 null（立即生效，覆盖整个时间线）
+    // Apple requires base country startDate must be null (immediately effective, covering entire timeline)
     baseIncluded[@"attributes"] = @{
         @"startDate": [NSNull null],
         @"endDate": [NSNull null],
@@ -808,10 +807,10 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
     };
     [includedArray addObject:baseIncluded];
     
-    // 添加其他地区的手动价格
+    // Add manual prices for other regions
     for (DIYCPPricePoint *pp in manualPrices)
     {
-        // 跳过基准国家（已在上面添加）
+        // Skip base country (already added above)
         if ([pp.territory.territoryId isEqualToString:baseTerritoryId]) continue;
         
         NSString *placeholderId = [NSString stringWithFormat:@"${price%ld}", (long)priceIndex++];
@@ -845,7 +844,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
         [includedArray addObject:included];
     }
     
-    // 构建请求体
+    // Build request body
     NSDictionary *body = @{
         @"data": @{
             @"type": @"inAppPurchasePriceSchedules",
@@ -907,8 +906,8 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
                            progressBlock:(void (^)(NSInteger completed, NSInteger total))progressBlock
                               completion:(void (^)(NSArray<NSString *> *failedTerritories, NSError * _Nullable error))completion
 {
-    // 格式化日期
-    // Apple API: startDate 为 nil 时表示立即生效，不应默认使用今天的日期
+    // Format date
+    // Apple API: when startDate is nil, it means immediately effective, should not default to today's date
     NSString *startDateStr = nil;
     if (startDate)
     {
@@ -921,12 +920,12 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
     NSLog(@"[DIYCPMgr] Updating subscription prices for %@, %lu territories, startDate=%@",
           subscriptionId, (unsigned long)pricePoints.count, startDateStr ?: @"(immediate)");
     
-    // 订阅价格需要逐个地区提交（Apple API 限制）
+    // Subscription prices need to be submitted region by region (Apple API limitation)
     
     self.successTerritoriesForSub = @[].mutableCopy;
     self.failedTerritoriesForSub = @[].mutableCopy;
     
-    // 递归函数，逐个提交
+    // Recursive function, submit one by one
     [self submitSubscriptionPriceAtIndex:0
                              pricePoints:pricePoints
                           subscriptionId:subscriptionId
@@ -948,7 +947,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
 {
     if (index >= (NSInteger)pricePoints.count)
     {
-        // 全部完成
+        // All completed
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion([self.failedTerritoriesForSub copy], nil);
         });
@@ -1044,7 +1043,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
             if (progressBlock) progressBlock(self.successTerritoriesForSub.count, total);
         });
         
-        // 延迟 0.2 秒后提交下一个，避免 API 限流
+        // Delay 0.2 seconds before submitting next, to avoid API rate limiting
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             [self submitSubscriptionPriceAtIndex:index + 1
                                      pricePoints:pricePoints
@@ -1127,14 +1126,14 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
 
 - (NSString *)generateJWTToken
 {
-    // 如果缓存的 token 还有效（提前60秒刷新），直接返回
+    // If cached token is still valid (refresh 60 seconds early), return directly
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
     if (self.cachedToken && now < self.tokenExpireTime - 60)
     {
         return self.cachedToken;
     }
     
-    // 从用户配置读取凭据
+    // Read credentials from user configuration
     NSString *keyID = DIYSettings.apiKeyID;
     NSString *issuerID = DIYSettings.apiIssuerID;
     NSString *p8Content = DIYSettings.apiP8Content;
@@ -1145,7 +1144,7 @@ NSInteger const DIYCPMgrErrorCodeNoPriceSchedule = 10404;
         return nil;
     }
     
-    // 使用 CupertinoJWT（通过 Swift Wrapper）生成 JWT Token
+    // Generate JWT Token using CupertinoJWT (via Swift Wrapper)
     NSString *token = [DIYJWTHelper generateTokenWithKeyID:keyID
                                                   issuerID:issuerID
                                                  p8Content:p8Content];
